@@ -1,0 +1,4 @@
+chart_bot
+output/
+*.png
+.env

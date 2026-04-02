@@ -9,7 +9,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -18,8 +17,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/chromedp/chromedp"
 )
-
-const display = ":99"
 
 var ashiMap = map[string]struct {
 	selector string
@@ -33,23 +30,38 @@ var ashiMap = map[string]struct {
 	"1min":    {"#kc_ashi_4", "1分足"},
 }
 
+// Chrome常駐用のブラウザコンテキスト
+var browserCtx context.Context
+
 func main() {
 	token := os.Getenv("DISCORD_TOKEN")
 	if token == "" {
 		log.Fatal("DISCORD_TOKEN が設定されていません")
 	}
 
-	// Xvfbを起動
-	xvfb := exec.Command("Xvfb", display, "-screen", "0", "1920x1080x24")
-	if err := xvfb.Start(); err != nil {
-		log.Fatalf("Xvfb起動失敗: %v", err)
+	// Chrome常駐起動（headlessモード、Xvfb不要）
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.WindowSize(1920, 1080),
+	)
+	if p := os.Getenv("CHROME_PATH"); p != "" {
+		opts = append(opts, chromedp.ExecPath(p))
 	}
-	defer func() {
-		xvfb.Process.Kill()
-		xvfb.Wait()
-	}()
-	time.Sleep(1 * time.Second)
-	os.Setenv("DISPLAY", display)
+
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer allocCancel()
+
+	var browserCancel context.CancelFunc
+	browserCtx, browserCancel = chromedp.NewContext(allocCtx)
+	defer browserCancel()
+
+	if err := chromedp.Run(browserCtx, chromedp.Navigate("about:blank")); err != nil {
+		log.Fatalf("Chrome起動失敗: %v", err)
+	}
+	log.Println("Chrome常駐起動完了（headlessモード）")
 
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
@@ -82,7 +94,6 @@ func onMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	args := strings.Fields(m.Content)
-	// !chart <ティッカー> [足種]
 	if len(args) < 2 {
 		s.ChannelMessageSend(m.ChannelID, "使い方: `!chart <ティッカー> [daily|weekly|monthly|yearly|5min|1min]`")
 		return
@@ -122,35 +133,26 @@ func onMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 func captureChart(ticker, ashiSelector string) ([]byte, error) {
 	url := fmt.Sprintf("https://s.kabutan.jp/stocks/%s/chart/", ticker)
 
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", false),
-		chromedp.Flag("disable-gpu", false),
-		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-dev-shm-usage", true),
-		chromedp.WindowSize(1920, 1080),
+	ctx, cancel := chromedp.NewContext(browserCtx)
+	defer cancel()
+
+	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	var exists bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(url),
+		chromedp.Poll(`document.querySelector('#kc_chartPanel_c0') !== null`, &exists, chromedp.WithPollingInterval(200*time.Millisecond)),
 	)
-	if p := os.Getenv("CHROME_PATH"); p != "" {
-		opts = append(opts, chromedp.ExecPath(p))
+	if err != nil || !exists {
+		return nil, fmt.Errorf("ティッカー「%s」は存在しません", ticker)
 	}
-
-	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer allocCancel()
-
-	ctx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-
-	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
 
 	var rect map[string]float64
 	var buf []byte
-	err := chromedp.Run(ctx,
-		chromedp.Navigate(url),
-		chromedp.Sleep(3*time.Second),
-		// 足種タブをクリック
+	err = chromedp.Run(ctx,
 		chromedp.Click(ashiSelector, chromedp.ByQuery),
-		chromedp.Sleep(3*time.Second),
-		// 足種タブ〜チャート下端の領域を取得
+		chromedp.Sleep(500*time.Millisecond),
 		chromedp.Evaluate(`(() => {
 			const tabs = document.querySelector('.kc_ashi');
 			const chart = document.querySelector('#kc_area');

@@ -1,3 +1,5 @@
+ARG SYSBASE=quay.io/almalinuxorg/almalinux:10
+
 FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
@@ -6,7 +8,6 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o chart_bot .
 
-ARG SYSBASE=quay.io/almalinuxorg/almalinux:10
 FROM ${SYSBASE} AS system-build
 
 RUN mkdir -p /mnt/sys-root; \

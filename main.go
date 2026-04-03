@@ -59,11 +59,16 @@ func main() {
 	}()
 	// Xvfbのソケットが作成されるまで待機
 	sockPath := fmt.Sprintf("/tmp/.X11-unix/X%s", strings.TrimPrefix(display, ":"))
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 50; i++ {
 		if _, err := os.Stat(sockPath); err == nil {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	if _, err := os.Stat(sockPath); err != nil {
+		xvfb.Process.Kill()
+		xvfb.Wait()
+		log.Fatalf("Xvfbソケット待機タイムアウト: display=%s sock=%s", display, sockPath)
 	}
 	os.Setenv("DISPLAY", display)
 
@@ -212,10 +217,17 @@ func captureChart(ticker, ashiSelector string) ([]byte, error) {
 		return nil, fmt.Errorf("画像デコード失敗: %w", err)
 	}
 
-	x := int(math.Round(rect["x"]))
-	y := int(math.Round(rect["y"]))
+	bounds := img.Bounds()
+	x := max(0, int(math.Round(rect["x"])))
+	y := max(0, int(math.Round(rect["y"])))
 	w := int(math.Round(rect["width"]))
 	h := int(math.Round(rect["height"]))
+	if x+w > bounds.Max.X {
+		w = bounds.Max.X - x
+	}
+	if y+h > bounds.Max.Y {
+		h = bounds.Max.Y - y
+	}
 
 	cropped, ok := img.(interface {
 		SubImage(r image.Rectangle) image.Image

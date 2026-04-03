@@ -131,7 +131,7 @@ func onMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 }
 
 func captureChart(ticker, ashiSelector string) ([]byte, error) {
-	url := fmt.Sprintf("https://s.kabutan.jp/stocks/%s/chart/", ticker)
+	url := fmt.Sprintf("https://kabutan.jp/stock/chart?code=%s", ticker)
 
 	ctx, cancel := chromedp.NewContext(browserCtx)
 	defer cancel()
@@ -142,7 +142,7 @@ func captureChart(ticker, ashiSelector string) ([]byte, error) {
 	var exists bool
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(url),
-		chromedp.Poll(`document.querySelector('#kc_chartPanel_c0') !== null`, &exists, chromedp.WithPollingInterval(200*time.Millisecond)),
+		chromedp.Poll(`document.querySelector('#kc_area') !== null`, &exists, chromedp.WithPollingInterval(200*time.Millisecond)),
 	)
 	if err != nil || !exists {
 		return nil, fmt.Errorf("ティッカー「%s」は存在しません", ticker)
@@ -154,9 +154,10 @@ func captureChart(ticker, ashiSelector string) ([]byte, error) {
 		chromedp.Click(ashiSelector, chromedp.ByQuery),
 		chromedp.Sleep(500*time.Millisecond),
 		chromedp.Evaluate(`(() => {
-			const tabs = document.querySelector('.kc_ashi');
+			const ashi = document.querySelector('#kc_ashi_1');
 			const chart = document.querySelector('#kc_area');
-			if (!tabs || !chart) return null;
+			if (!ashi || !chart) return null;
+			const tabs = ashi.parentElement;
 			const t = tabs.getBoundingClientRect();
 			const c = chart.getBoundingClientRect();
 			return {x: c.x, y: t.y, width: c.width, height: c.bottom - t.y};

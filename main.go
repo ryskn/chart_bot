@@ -193,8 +193,9 @@ func captureChart(ticker, ashiSelector string) ([]byte, error) {
 	var rect map[string]float64
 	var buf []byte
 	err = chromedp.Run(ctx,
-		chromedp.Click(ashiSelector, chromedp.ByQuery),
-		chromedp.Sleep(300*time.Millisecond),
+		// JSでクリックイベントを発火（ラジオボタン形式対応）
+		chromedp.Evaluate(fmt.Sprintf(`document.querySelector('%s').click()`, ashiSelector), nil),
+		chromedp.Sleep(1*time.Second),
 		chromedp.Evaluate(`(() => {
 			const stock = document.querySelector('#stockinfo');
 			const chart = document.querySelector('#kc_area');

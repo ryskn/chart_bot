@@ -19,7 +19,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg \
        https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg \
-    && gpg --batch --quiet --show-keys /usr/share/keyrings/brave-browser-archive-keyring.gpg | grep -q "$BRAVE_KEYRING_FINGERPRINT" \
     && echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" \
        > /etc/apt/sources.list.d/brave-browser-release.list \
     && apt-get update && apt-get install -y --no-install-recommends brave-browser \

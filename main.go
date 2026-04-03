@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -17,6 +18,14 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/chromedp/chromedp"
 )
+
+var display = ":99"
+
+func init() {
+	if d := os.Getenv("XVFB_DISPLAY"); d != "" {
+		display = d
+	}
+}
 
 var ashiMap = map[string]struct {
 	selector string
@@ -39,16 +48,45 @@ func main() {
 		log.Fatal("DISCORD_TOKEN が設定されていません")
 	}
 
-	// Chrome常駐起動（headlessモード、Xvfb不要）
+	// Xvfb起動
+	xvfb := exec.Command("Xvfb", display, "-screen", "0", "1920x1080x24")
+	if err := xvfb.Start(); err != nil {
+		log.Fatalf("Xvfb起動失敗: %v", err)
+	}
+	defer func() {
+		xvfb.Process.Kill()
+		xvfb.Wait()
+	}()
+	// Xvfbのソケットが作成されるまで待機
+	sockPath := fmt.Sprintf("/tmp/.X11-unix/X%s", strings.TrimPrefix(display, ":"))
+	for i := 0; i < 50; i++ {
+		if _, err := os.Stat(sockPath); err == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if _, err := os.Stat(sockPath); err != nil {
+		xvfb.Process.Kill()
+		xvfb.Wait()
+		log.Fatalf("Xvfbソケット待機タイムアウト: display=%s sock=%s", display, sockPath)
+	}
+	os.Setenv("DISPLAY", display)
+
+	// Chrome常駐起動（Xvfb上で通常モード）
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
+		chromedp.Flag("headless", false),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
-		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("disable-gpu", false),
+		chromedp.Flag("disable-blink-features", "AutomationControlled"),
+		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"),
 		chromedp.WindowSize(1920, 1080),
 	)
 	if p := os.Getenv("CHROME_PATH"); p != "" {
 		opts = append(opts, chromedp.ExecPath(p))
+	}
+	if proxy := os.Getenv("PROXY_SERVER"); proxy != "" {
+		opts = append(opts, chromedp.ProxyServer(proxy))
 	}
 
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
@@ -59,9 +97,13 @@ func main() {
 	defer browserCancel()
 
 	if err := chromedp.Run(browserCtx, chromedp.Navigate("about:blank")); err != nil {
-		log.Fatalf("Chrome起動失敗: %v", err)
+		browserCancel()
+		allocCancel()
+		xvfb.Process.Kill()
+		xvfb.Wait()
+		log.Fatalf("Brave起動失敗: %v", err)
 	}
-	log.Println("Chrome常駐起動完了（headlessモード）")
+	log.Println("Brave常駐起動完了")
 
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
@@ -131,7 +173,7 @@ func onMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 }
 
 func captureChart(ticker, ashiSelector string) ([]byte, error) {
-	url := fmt.Sprintf("https://s.kabutan.jp/stocks/%s/chart/", ticker)
+	url := fmt.Sprintf("https://kabutan.jp/stock/chart?code=%s", ticker)
 
 	ctx, cancel := chromedp.NewContext(browserCtx)
 	defer cancel()
@@ -142,7 +184,7 @@ func captureChart(ticker, ashiSelector string) ([]byte, error) {
 	var exists bool
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(url),
-		chromedp.Poll(`document.querySelector('#kc_chartPanel_c0') !== null`, &exists, chromedp.WithPollingInterval(200*time.Millisecond)),
+		chromedp.Poll(`document.querySelector('#kc_area') !== null`, &exists, chromedp.WithPollingInterval(200*time.Millisecond)),
 	)
 	if err != nil || !exists {
 		return nil, fmt.Errorf("ティッカー「%s」は存在しません", ticker)
@@ -152,16 +194,19 @@ func captureChart(ticker, ashiSelector string) ([]byte, error) {
 	var buf []byte
 	err = chromedp.Run(ctx,
 		chromedp.Click(ashiSelector, chromedp.ByQuery),
-		chromedp.Sleep(500*time.Millisecond),
+		chromedp.Sleep(300*time.Millisecond),
 		chromedp.Evaluate(`(() => {
-			const tabs = document.querySelector('.kc_ashi');
+			const stock = document.querySelector('#stockinfo');
 			const chart = document.querySelector('#kc_area');
-			if (!tabs || !chart) return null;
-			const t = tabs.getBoundingClientRect();
+			if (!stock || !chart) return null;
+			// チャート下端までスクロール
+			chart.scrollIntoView(false);
+			const sy = window.scrollY;
+			const s = stock.getBoundingClientRect();
 			const c = chart.getBoundingClientRect();
-			return {x: c.x, y: t.y, width: c.width, height: c.bottom - t.y};
+			return {x: s.x, y: s.y + sy, width: Math.max(s.width, c.width), height: c.bottom + sy - (s.y + sy)};
 		})()`, &rect),
-		chromedp.CaptureScreenshot(&buf),
+		chromedp.FullScreenshot(&buf, 100),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("スクリーンショット取得失敗: %w", err)
@@ -176,10 +221,17 @@ func captureChart(ticker, ashiSelector string) ([]byte, error) {
 		return nil, fmt.Errorf("画像デコード失敗: %w", err)
 	}
 
-	x := int(math.Round(rect["x"]))
-	y := int(math.Round(rect["y"]))
+	bounds := img.Bounds()
+	x := max(0, int(math.Round(rect["x"])))
+	y := max(0, int(math.Round(rect["y"])))
 	w := int(math.Round(rect["width"]))
 	h := int(math.Round(rect["height"]))
+	if x+w > bounds.Max.X {
+		w = bounds.Max.X - x
+	}
+	if y+h > bounds.Max.Y {
+		h = bounds.Max.Y - y
+	}
 
 	cropped, ok := img.(interface {
 		SubImage(r image.Rectangle) image.Image

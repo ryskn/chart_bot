@@ -2,3 +2,4 @@ chart_bot
 output/
 *.png
 .env
+.DS_Store

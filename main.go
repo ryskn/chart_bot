@@ -178,7 +178,7 @@ func captureChart(ticker, ashiSelector string) ([]byte, error) {
 	ctx, cancel := chromedp.NewContext(browserCtx)
 	defer cancel()
 
-	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	var exists bool

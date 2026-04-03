@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -17,6 +18,8 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/chromedp/chromedp"
 )
+
+const display = ":99"
 
 var ashiMap = map[string]struct {
 	selector string
@@ -39,16 +42,33 @@ func main() {
 		log.Fatal("DISCORD_TOKEN が設定されていません")
 	}
 
-	// Chrome常駐起動（headlessモード、Xvfb不要）
+	// Xvfb起動
+	xvfb := exec.Command("Xvfb", display, "-screen", "0", "1920x1080x24")
+	if err := xvfb.Start(); err != nil {
+		log.Fatalf("Xvfb起動失敗: %v", err)
+	}
+	defer func() {
+		xvfb.Process.Kill()
+		xvfb.Wait()
+	}()
+	time.Sleep(1 * time.Second)
+	os.Setenv("DISPLAY", display)
+
+	// Chrome常駐起動（Xvfb上で通常モード）
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
+		chromedp.Flag("headless", false),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
-		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("disable-gpu", false),
+		chromedp.Flag("disable-blink-features", "AutomationControlled"),
+		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"),
 		chromedp.WindowSize(1920, 1080),
 	)
 	if p := os.Getenv("CHROME_PATH"); p != "" {
 		opts = append(opts, chromedp.ExecPath(p))
+	}
+	if proxy := os.Getenv("PROXY_SERVER"); proxy != "" {
+		opts = append(opts, chromedp.ProxyServer(proxy))
 	}
 
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
@@ -61,7 +81,7 @@ func main() {
 	if err := chromedp.Run(browserCtx, chromedp.Navigate("about:blank")); err != nil {
 		log.Fatalf("Chrome起動失敗: %v", err)
 	}
-	log.Println("Chrome常駐起動完了（headlessモード）")
+	log.Println("Brave常駐起動完了")
 
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
@@ -152,17 +172,19 @@ func captureChart(ticker, ashiSelector string) ([]byte, error) {
 	var buf []byte
 	err = chromedp.Run(ctx,
 		chromedp.Click(ashiSelector, chromedp.ByQuery),
-		chromedp.Sleep(500*time.Millisecond),
+		chromedp.Sleep(300*time.Millisecond),
 		chromedp.Evaluate(`(() => {
-			const ashi = document.querySelector('#kc_ashi_1');
+			const stock = document.querySelector('#stockinfo');
 			const chart = document.querySelector('#kc_area');
-			if (!ashi || !chart) return null;
-			const tabs = ashi.parentElement;
-			const t = tabs.getBoundingClientRect();
+			if (!stock || !chart) return null;
+			// チャート下端までスクロール
+			chart.scrollIntoView(false);
+			const sy = window.scrollY;
+			const s = stock.getBoundingClientRect();
 			const c = chart.getBoundingClientRect();
-			return {x: c.x, y: t.y, width: c.width, height: c.bottom - t.y};
+			return {x: s.x, y: s.y + sy, width: Math.max(s.width, c.width), height: c.bottom + sy - (s.y + sy)};
 		})()`, &rect),
-		chromedp.CaptureScreenshot(&buf),
+		chromedp.FullScreenshot(&buf, 100),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("スクリーンショット取得失敗: %w", err)

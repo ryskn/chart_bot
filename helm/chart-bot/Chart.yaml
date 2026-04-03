@@ -1,0 +1,6 @@
+apiVersion: v2
+name: chart-bot
+description: kabutan.jp株価チャートスクリーンショットDiscord Bot
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

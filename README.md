@@ -8,6 +8,24 @@ kabutan.jp の株価チャートをスクリーンショットして Discord に
 docker run --rm -e DISCORD_TOKEN="<your-token>" ghcr.io/ryskn/chart_bot:latest
 ```
 
+### WARP経由で実行
+
+Cloudflare WARP をproxyモードで起動し、SOCKS5プロキシ経由でBraveの通信を高速化できる。
+
+```bash
+# ホスト側でWARPをproxyモードにする
+warp-cli mode proxy
+warp-cli connect
+
+# コンテナをWARP経由で実行
+docker run --rm \
+  -e DISCORD_TOKEN="<your-token>" \
+  -e PROXY_SERVER="socks5://host.docker.internal:40000" \
+  ghcr.io/ryskn/chart_bot:latest
+```
+
+`PROXY_SERVER` を省略すると直接通信になる。
+
 ## Discord コマンド
 
 ```
@@ -44,3 +62,10 @@ docker build -t chart_bot .
 ## アーキテクチャ
 
 `linux/amd64`, `linux/arm64` 対応。GitHub Actions で自動ビルド・push。
+
+## 技術構成
+
+- **Brave Browser** — 広告ブロッカー内蔵、Xvfb上で通常モード動作
+- **chromedp** — Chrome DevTools Protocol で Brave を制御
+- **discordgo** — Discord Bot API
+- Chrome常駐 + タブ開閉方式で高速レスポンス

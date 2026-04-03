@@ -1,0 +1,21 @@
+image:
+  repository: ghcr.io/ryskn/chart_bot
+  tag: latest
+  pullPolicy: IfNotPresent
+
+discord:
+  # 既存のSecretを参照する場合
+  existingSecret: ""
+  # existingSecretが空の場合、このトークンでSecretを作成
+  token: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+nodeSelector: {}
+tolerations: []

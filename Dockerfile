@@ -8,7 +8,6 @@ RUN CGO_ENABLED=0 go build -o chart_bot .
 
 FROM ubuntu:24.04
 
-ENV BRAVE_KEYRING_FINGERPRINT=D16166072CACDF2C9429CBF11BF41E37D039F691
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \

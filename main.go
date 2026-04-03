@@ -97,7 +97,11 @@ func main() {
 	defer browserCancel()
 
 	if err := chromedp.Run(browserCtx, chromedp.Navigate("about:blank")); err != nil {
-		log.Fatalf("Chrome起動失敗: %v", err)
+		browserCancel()
+		allocCancel()
+		xvfb.Process.Kill()
+		xvfb.Wait()
+		log.Fatalf("Brave起動失敗: %v", err)
 	}
 	log.Println("Brave常駐起動完了")
 

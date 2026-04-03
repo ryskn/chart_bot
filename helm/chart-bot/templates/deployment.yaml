@@ -24,6 +24,10 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.discord.existingSecret | default (printf "%s-discord" .Release.Name) }}
                   key: DISCORD_TOKEN
+            {{- if .Values.proxyServer }}
+            - name: PROXY_SERVER
+              value: {{ .Values.proxyServer | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

@@ -26,6 +26,8 @@ docker run --rm \
 
 `PROXY_SERVER` を省略すると直接通信になる。
 
+> Linux の Docker では `host.docker.internal` が解決できない場合がある。その場合は `--add-host=host.docker.internal:host-gateway` を追加する。
+
 ## Discord コマンド
 
 ```

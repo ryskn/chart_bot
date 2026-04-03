@@ -9,6 +9,9 @@ discord:
   # existingSecretが空の場合、このトークンでSecretを作成
   token: ""
 
+proxyServer: ""
+# 例: proxyServer: "socks5://warp-svc:40000"
+
 resources:
   requests:
     cpu: 100m

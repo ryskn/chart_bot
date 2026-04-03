@@ -19,7 +19,13 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-const display = ":99"
+var display = ":99"
+
+func init() {
+	if d := os.Getenv("XVFB_DISPLAY"); d != "" {
+		display = d
+	}
+}
 
 var ashiMap = map[string]struct {
 	selector string
@@ -51,7 +57,14 @@ func main() {
 		xvfb.Process.Kill()
 		xvfb.Wait()
 	}()
-	time.Sleep(1 * time.Second)
+	// Xvfbのソケットが作成されるまで待機
+	sockPath := fmt.Sprintf("/tmp/.X11-unix/X%s", strings.TrimPrefix(display, ":"))
+	for i := 0; i < 20; i++ {
+		if _, err := os.Stat(sockPath); err == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	os.Setenv("DISPLAY", display)
 
 	// Chrome常駐起動（Xvfb上で通常モード）

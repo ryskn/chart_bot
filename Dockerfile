@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gnupg \
     xvfb \
+    x11vnc \
     fonts-noto-cjk \
     fontconfig \
     ca-certificates \

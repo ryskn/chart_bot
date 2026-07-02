@@ -14,6 +14,8 @@ spec:
       labels:
         app: {{ .Release.Name }}
     spec:
+      hostNetwork: {{ .Values.hostNetwork }}
+      dnsPolicy: {{ .Values.dnsPolicy }}
       containers:
         - name: chart-bot
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -27,6 +29,14 @@ spec:
             {{- if .Values.proxyServer }}
             - name: PROXY_SERVER
               value: {{ .Values.proxyServer | quote }}
+            {{- end }}
+            {{- if .Values.guildID }}
+            - name: GUILD_ID
+              value: {{ .Values.guildID | quote }}
+            {{- end }}
+            {{- if .Values.maxConcurrent }}
+            - name: MAX_CONCURRENT
+              value: {{ .Values.maxConcurrent | quote }}
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

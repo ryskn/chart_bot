@@ -12,13 +12,23 @@ discord:
 proxyServer: ""
 # 例: proxyServer: "socks5://warp-svc:40000"
 
+# スラッシュコマンド /chart を特定サーバーに即時登録する場合はサーバー(guild) IDを指定。
+# 空の場合はグローバル登録（Discordへの反映に最大1時間）。
+guildID: ""
+
 resources:
   requests:
     cpu: 100m
     memory: 512Mi
   limits:
-    cpu: "1"
-    memory: 1Gi
+    cpu: "2"
+    memory: 2Gi
+
+# 同時にチャート取得（Braveタブ）を走らせる最大数。共有Braveのメモリと相談。
+maxConcurrent: 3
+
+hostNetwork: false
+dnsPolicy: ClusterFirst
 
 nodeSelector: {}
 tolerations: []
